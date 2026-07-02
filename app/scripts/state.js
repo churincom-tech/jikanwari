@@ -212,6 +212,7 @@
 
   function normalizeTeacher(teacher, school) {
     const schoolDays = Array.isArray(school.days) && school.days.length ? school.days : DAYS.slice();
+    const hasWorkingDays = Object.prototype.hasOwnProperty.call(teacher || {}, "workingDays");
     const next = Object.assign({
       id: uid("teacher"),
       name: "",
@@ -227,6 +228,7 @@
     next.unavailable = Array.isArray(next.unavailable) ? next.unavailable : [];
     next.autoUnavailable = Array.isArray(next.autoUnavailable) ? next.autoUnavailable : [];
     next.workingDays = Array.isArray(next.workingDays) ? next.workingDays.filter((day) => ALL_DAYS.includes(day)) : [];
+    if (next.partTime && !hasWorkingDays) next.workingDays = schoolDays.slice();
     return next;
   }
 

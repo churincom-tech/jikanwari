@@ -33,6 +33,16 @@
       if (!Number(lesson.weeklyCount)) errors.push(makeMessage("error", `${lesson.subject || "未設定教科"}の週時数を1以上にしてください。`, lesson.id));
       if (!lesson.teacherId || !teacherIds.has(lesson.teacherId)) errors.push(makeMessage("error", `${lesson.subject || "未設定教科"}の担当教員を設定してください。`, lesson.id));
       if (lesson.roomType && !roomTypes.has(lesson.roomType)) warnings.push(makeMessage("warning", `${lesson.subject}で使う教室種別「${lesson.roomType}」が教室設定にありません。`, lesson.id));
+      const teacherCapacity = lessonTeacherCapacity(state, lesson);
+      if (teacherCapacity && teacherCapacity.capacity < Number(lesson.weeklyCount || 0)) {
+        const message = makeMessage(
+          "error",
+          teacherCapacityMessage(state, lesson, teacherCapacity),
+          lesson.id
+        );
+        message.fixTab = "teachers";
+        errors.push(message);
+      }
       if (App.State.getDoubleMode(lesson) === "required") {
         if (Number(lesson.weeklyCount || 0) < 2) {
           errors.push(makeMessage("error", `${lesson.subject || "未設定教科"}は2時間連続必須のため、週時数を2以上にしてください。`, lesson.id));
@@ -44,7 +54,14 @@
           warnings.push(makeMessage("warning", `${lesson.subject || "未設定教科"}は2時間連続必須のため、1日上限は2以上が必要です。`, lesson.id));
         }
         if (!hasPotentialDoubleSlot(state, lesson)) {
-          errors.push(makeMessage("error", `${getClassName(state, lesson.classId)} ${lesson.subject || "未設定教科"}は2時間連続で置ける候補枠がありません。`, lesson.id));
+          const detail = doubleSlotBlockDetail(state, lesson);
+          const message = makeMessage(
+            "error",
+            `${getClassName(state, lesson.classId)} ${lesson.subject || "未設定教科"}は2時間連続で置ける候補枠が見つかりません。${detail.text}`,
+            lesson.id
+          );
+          message.fixTab = detail.tab;
+          errors.push(message);
         }
       }
     });
@@ -114,6 +131,46 @@
       info.unshift(makeMessage("ok", "候補作成に進めます。"));
     }
     return { errors, warnings, info };
+  }
+
+  function lessonTeacherCapacity(state, lesson) {
+    const teacher = App.State.getTeacher(state, lesson.teacherId);
+    if (!teacher) return null;
+    const sameDayLimit = Math.max(1, Number(lesson.sameDayLimit || 1));
+    const unavailable = new Set(teacher.unavailable || []);
+    const workingDays = teacher.partTime ? new Set(teacher.workingDays || []) : null;
+    const usableDays = [];
+    let capacity = 0;
+    state.school.days.forEach((day) => {
+      if (workingDays && !workingDays.has(day)) return;
+      const dayLimit = App.State.getDayPeriodLimit(state, day);
+      let usablePeriods = 0;
+      for (let period = 1; period <= dayLimit; period += 1) {
+        if (!unavailable.has(slotKey(day, period))) usablePeriods += 1;
+      }
+      const dayCapacity = Math.min(sameDayLimit, usablePeriods);
+      if (dayCapacity > 0) {
+        usableDays.push(day);
+        capacity += dayCapacity;
+      }
+    });
+    return {
+      teacher,
+      capacity,
+      usableDays,
+      sameDayLimit
+    };
+  }
+
+  function teacherCapacityMessage(state, lesson, detail) {
+    const required = Number(lesson.weeklyCount || 0);
+    const className = getClassName(state, lesson.classId);
+    const teacherName = detail.teacher.name || "担当教員";
+    const dayText = detail.usableDays.length ? detail.usableDays.join("・") : "なし";
+    if (detail.teacher.partTime) {
+      return `${className} ${lesson.subject}は週${required}コマ必要ですが、担当の ${teacherName} の勤務日は ${dayText} で、1日上限${detail.sameDayLimit}コマのため最大${detail.capacity}コマまでしか置けません。勤務日を増やす、担当教員を分ける、または授業の1日上限を見直してください。`;
+    }
+    return `${className} ${lesson.subject}は週${required}コマ必要ですが、担当の ${teacherName} の勤務不可時間が多く、最大${detail.capacity}コマまでしか置けません。教員の勤務不可時間、担当教員、または授業の1日上限を見直してください。`;
   }
 
   function validateCurriculumHours(state, warnings, info) {
@@ -191,8 +248,10 @@
     if (Number(state.school.periodsPerDay || 0) < 2) return false;
     const teacher = App.State.getTeacher(state, lesson.teacherId);
     const unavailable = teacher ? teacher.unavailable || [] : [];
+    const workingDays = teacher && teacher.partTime ? new Set(teacher.workingDays || []) : null;
     const lunchBreakAfter = Number(state.school.lunchBreakAfterPeriod || 4);
     return state.school.days.some((day) => {
+      if (workingDays && !workingDays.has(day)) return false;
       const dayLimit = App.State.getDayPeriodLimit(state, day);
       for (let period = 1; period < dayLimit; period += 1) {
         if (period === lunchBreakAfter) continue;
@@ -204,6 +263,54 @@
       }
       return false;
     });
+  }
+
+  function doubleSlotBlockDetail(state, lesson) {
+    const teacher = App.State.getTeacher(state, lesson.teacherId);
+    const hasTwoPeriodDay = state.school.days.some((day) => App.State.getDayPeriodLimit(state, day) >= 2);
+    if (!hasTwoPeriodDay) {
+      return {
+        tab: "school",
+        text: "曜日ごとの使用時限数が少なく、同じ日に連続2コマを置けません。学校情報を確認してください。"
+      };
+    }
+    const roomMissing = lesson.roomType && lesson.roomType !== "普通教室" && getRoomCount(state, lesson.roomType) < 1;
+    if (roomMissing) {
+      return {
+        tab: "rooms",
+        text: `「${lesson.roomType}」が教室設定にないか、使える教室数が0です。教室情報を確認してください。`
+      };
+    }
+    if (teacher && teacher.partTime && (!teacher.workingDays || !teacher.workingDays.length)) {
+      return {
+        tab: "teachers",
+        text: `担当の ${teacher.name} は非常勤ですが勤務日が選ばれていません。教員情報で勤務日を選んでください。`
+      };
+    }
+    if (teacher) {
+      const unavailable = teacher.unavailable || [];
+      const lunchBreakAfter = Number(state.school.lunchBreakAfterPeriod || 4);
+      let checkedPair = false;
+      const hasTeacherBlockedPair = state.school.days.every((day) => {
+        const dayLimit = App.State.getDayPeriodLimit(state, day);
+        for (let period = 1; period < dayLimit; period += 1) {
+          if (period === lunchBreakAfter) continue;
+          checkedPair = true;
+          if (!unavailable.includes(slotKey(day, period)) && !unavailable.includes(slotKey(day, period + 1))) return false;
+        }
+        return true;
+      });
+      if (checkedPair && hasTeacherBlockedPair) {
+        return {
+          tab: "teachers",
+          text: `担当の ${teacher.name} の勤務日または勤務不可時間が、連続できる2コマをすべてふさいでいます。`
+        };
+      }
+    }
+    return {
+      tab: "lessons",
+      text: "給食をまたがない2コマ、担当教員の勤務時間、教室の空き、曜日ごとの使用時限数を確認してください。"
+    };
   }
 
   function validateFixedCounts(state, errors) {

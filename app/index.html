@@ -59,6 +59,7 @@
         <section class="rail-action-panel">
           <p>入力と条件を確認したら</p>
           <button id="railGenerateButton" class="rail-generate-button" type="button">時間割を作る</button>
+          <div id="railValidationHint" class="rail-validation-hint"></div>
         </section>
         <button class="tab step-button" type="button" data-tab="results">
           <span class="step-number">4</span>
@@ -77,7 +78,7 @@
       </section>
 
       <section class="side-section">
-        <h2>確認メッセージ</h2>
+        <h2>作成前の確認</h2>
         <div id="validationMessages" class="message-list"></div>
       </section>
 
@@ -96,6 +97,7 @@
         <span id="currentStepLabel">1 学校情報</span>
         <button id="nextStepButton" type="button" class="primary">次へ</button>
       </div>
+      <div id="blockingNotice" class="blocking-notice is-hidden"></div>
 
       <section id="tab-school" class="tab-panel active">
         <div class="section-heading">

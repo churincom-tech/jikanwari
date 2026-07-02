@@ -182,11 +182,26 @@
         const lesson = App.State.getLesson(state, lessonId);
         hardViolations.push({
           id: "H-003",
-          text: `${klass.name} ${lesson ? lesson.subject : "未設定授業"} を配置できませんでした。`,
+          text: placementFailureText(state, klass, lesson),
           ref: lessonId
         });
       });
     });
+  }
+
+  function placementFailureText(state, klass, lesson) {
+    if (!lesson) return `${klass.name} 未設定授業 を配置できませんでした。`;
+    const teacher = App.State.getTeacher(state, lesson.teacherId);
+    if (teacher && teacher.partTime) {
+      const workingDays = teacher.workingDays || [];
+      const sameDayLimit = Number(lesson.sameDayLimit || 1);
+      const capacity = Math.max(0, workingDays.length * sameDayLimit);
+      if (capacity < Number(lesson.weeklyCount || 0)) {
+        const dayText = workingDays.length ? workingDays.join("・") : "未設定";
+        return `${klass.name} ${lesson.subject} を配置できませんでした。担当の ${teacher.name} の勤務日は ${dayText} で、週${lesson.weeklyCount}コマに足りません。`;
+      }
+    }
+    return `${klass.name} ${lesson.subject} を配置できませんでした。担当教員の勤務時間、同じ曜日の上限、固定授業、教室の空きを確認してください。`;
   }
 
   function remainingLessonCounts(state, classId, entries) {

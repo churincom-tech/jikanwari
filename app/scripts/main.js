@@ -136,14 +136,14 @@
     document.getElementById("addTeacherButton").addEventListener("click", () => {
       state.teachers.push({ id: App.State.uid("teacher"), name: "新規教員", subjects: [], unavailable: [], partTime: false });
       renderTeachers();
-      saveLocal();
+      touch();
     });
     document.getElementById("addRoomButton").addEventListener("click", () => {
       state.rooms.push({ id: App.State.uid("room"), name: "新規教室", type: "普通教室", count: 1 });
       renderRooms();
       renderLessons();
       renderFixed();
-      saveLocal();
+      touch();
     });
     document.getElementById("addLessonButton").addEventListener("click", () => {
       const firstClass = App.State.getClasses(state)[0];
@@ -163,7 +163,7 @@
       });
       renderLessons();
       renderFixed();
-      saveLocal();
+      touch();
     });
     document.getElementById("addFixedButton").addEventListener("click", () => {
       const firstLesson = state.lessons.find((lesson) => remainingFixedSlots(lesson) > 0);
@@ -181,7 +181,7 @@
         roomType: firstLesson.roomType
       });
       renderFixed();
-      saveLocal();
+      touch();
     });
   }
 
@@ -257,7 +257,7 @@
   function generateFromCurrent() {
     const validation = runValidation();
     if (validation.errors.length) {
-      selectTab("fixed");
+      selectTab(tabForMessage(validation.errors[0]) || "fixed");
       return;
     }
     generate();
@@ -471,14 +471,14 @@
         }
         syncPartTimeUnavailable(teacher);
         renderTeachers();
-        saveLocal();
+        touch();
       });
       row.querySelector(".teacher-delete-button").addEventListener("click", () => {
         state.teachers = state.teachers.filter((item) => item.id !== teacher.id);
         state.lessons.forEach((lesson) => { if (lesson.teacherId === teacher.id) lesson.teacherId = ""; });
         state.fixedAssignments.forEach((fixed) => { if (fixed.teacherId === teacher.id) fixed.teacherId = ""; });
         renderAll();
-        saveLocal();
+        touch();
       });
       renderWorkingDaySelector(row.querySelector(".working-day-row"), teacher);
       renderUnavailableGrid(row.querySelector(".unavailable-grid"), teacher);
@@ -565,7 +565,7 @@
         teacher.workingDays.sort((a, b) => App.Constants.ALL_DAYS.indexOf(a) - App.Constants.ALL_DAYS.indexOf(b));
         syncPartTimeUnavailable(teacher);
         renderTeachers();
-        saveLocal();
+        touch();
       });
       root.appendChild(button);
     });
@@ -617,7 +617,7 @@
             teacher.unavailable.push(key);
           }
           renderTeachers();
-          saveLocal();
+          touch();
         });
         periodRoot.appendChild(button);
       }
@@ -644,7 +644,7 @@
       row.querySelector("button").addEventListener("click", () => {
         state.rooms = state.rooms.filter((item) => item.id !== room.id);
         renderAll();
-        saveLocal();
+        touch();
       });
       root.appendChild(row);
     });
@@ -910,6 +910,7 @@
           fixed.roomType = selectedLesson.roomType;
         }
         renderFixed();
+        touch();
       });
       bindRowField(row, "teacherId", (value) => { fixed.teacherId = value; });
       bindRowField(row, "roomType", (value) => { fixed.roomType = value; });
@@ -1093,24 +1094,103 @@
 
   function renderValidationMessages() {
     const root = document.getElementById("validationMessages");
-    const messages = [
-      ...(state.validation.errors || []),
-      ...(state.validation.warnings || []),
-      ...(state.validation.info || [])
-    ];
-    root.innerHTML = messages.length ? "" : `<div class="message info">条件確認はまだ実行されていません。</div>`;
-    messages.forEach((message) => {
+    const errors = state.validation.errors || [];
+    const warnings = state.validation.warnings || [];
+    const info = state.validation.info || [];
+    const visibleMessages = errors.length ? errors : warnings.length ? warnings : info.slice(0, 3);
+    root.innerHTML = "";
+    if (!visibleMessages.length) {
+      root.innerHTML = `<div class="message info">まだ確認する内容はありません。</div>`;
+    }
+    if (errors.length) {
+      const summary = document.createElement("div");
+      summary.className = "message error validation-summary-message";
+      summary.innerHTML = `<strong>時間割を作る前に ${errors.length} 件の確認が必要です。</strong><span>下の理由を直すと作成に進めます。</span>`;
+      root.appendChild(summary);
+    }
+    visibleMessages.slice(0, errors.length ? 5 : 4).forEach((message) => {
       const div = document.createElement("div");
-      div.className = `message ${message.type || "info"}`;
-      div.textContent = message.text;
+      div.className = `message ${message.type || "info"} actionable-message`;
+      div.innerHTML = `
+        <span>${escapeHtml(message.text)}</span>
+        ${errors.length ? `<button type="button" data-open-message-tab="${escapeAttr(tabForMessage(message))}">確認する</button>` : ""}
+      `;
+      const button = div.querySelector("[data-open-message-tab]");
+      if (button) button.addEventListener("click", () => selectTab(button.dataset.openMessageTab || "fixed"));
       root.appendChild(div);
     });
+    if (errors.length > 5) {
+      const more = document.createElement("div");
+      more.className = "message warning";
+      more.textContent = `ほか ${errors.length - 5} 件あります。上から順に直してください。`;
+      root.appendChild(more);
+    }
+    renderBlockingNotice(errors);
+    renderRailValidationHint(errors, warnings);
     const hasErrors = Boolean(state.validation.errors && state.validation.errors.length);
     const generateButton = document.getElementById("generateButton");
     if (generateButton) generateButton.disabled = hasErrors;
     const railGenerateButton = document.getElementById("railGenerateButton");
     if (railGenerateButton) railGenerateButton.disabled = hasErrors;
     renderGuide();
+  }
+
+  function renderRailValidationHint(errors, warnings) {
+    const root = document.getElementById("railValidationHint");
+    if (!root) return;
+    root.innerHTML = "";
+    if (errors.length) {
+      const first = errors[0];
+      root.innerHTML = `
+        <div class="rail-error-hint">
+          <strong>まだ作成できません</strong>
+          <span>${escapeHtml(first.text)}</span>
+          <button type="button">直す画面へ</button>
+        </div>
+      `;
+      root.querySelector("button").addEventListener("click", () => selectTab(tabForMessage(first) || "fixed"));
+      return;
+    }
+    if (warnings.length) {
+      root.innerHTML = `<div class="rail-ok-hint">作成できます。気になる警告は下の確認欄で見られます。</div>`;
+      return;
+    }
+    root.innerHTML = `<div class="rail-ok-hint">作成できます。</div>`;
+  }
+
+  function renderBlockingNotice(errors) {
+    const root = document.getElementById("blockingNotice");
+    if (!root) return;
+    if (!errors.length) {
+      root.classList.add("is-hidden");
+      root.innerHTML = "";
+      return;
+    }
+    const first = errors[0];
+    root.classList.remove("is-hidden");
+    root.innerHTML = `
+      <div>
+        <strong>時間割を作れない理由</strong>
+        <p>${escapeHtml(first.text)}</p>
+      </div>
+      <button type="button">この設定を確認する</button>
+    `;
+    root.querySelector("button").addEventListener("click", () => selectTab(tabForMessage(first) || "fixed"));
+  }
+
+  function tabForMessage(message) {
+    if (!message) return "fixed";
+    if (message.fixTab) return message.fixTab;
+    const ref = message.ref || "";
+    if (ref === "school.days" || ref === "school.periodsPerDay" || ref === "classes") return "school";
+    if (state.teachers.some((teacher) => teacher.id === ref)) return "teachers";
+    if (state.rooms.some((room) => room.id === ref)) return "rooms";
+    if (state.lessons.some((lesson) => lesson.id === ref)) return "lessons";
+    if (state.fixedAssignments.some((fixed) => fixed.id === ref)) return "fixed";
+    if (String(message.text || "").includes("勤務日") || String(message.text || "").includes("勤務不可")) return "teachers";
+    if (String(message.text || "").includes("教室")) return "rooms";
+    if (String(message.text || "").includes("学校情報") || String(message.text || "").includes("曜日")) return "school";
+    return "fixed";
   }
 
   function renderStatus() {

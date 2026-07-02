@@ -358,6 +358,46 @@ label {
   box-shadow: none;
 }
 
+.rail-validation-hint {
+  display: grid;
+  gap: 6px;
+}
+
+.rail-error-hint,
+.rail-ok-hint {
+  display: grid;
+  gap: 7px;
+  padding: 9px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.rail-error-hint {
+  border: 1px solid #ffc9c4;
+  background: #fff1ef;
+  color: var(--danger);
+}
+
+.rail-error-hint span {
+  color: #8d241f;
+}
+
+.rail-error-hint button {
+  min-height: 34px;
+  border-color: #ffc9c4;
+  background: #ffffff;
+  color: var(--danger);
+  font-weight: 900;
+}
+
+.rail-ok-hint {
+  border: 1px solid #b8e4dc;
+  background: #effaf7;
+  color: var(--ok);
+  font-weight: 800;
+}
+
 .side-section {
   display: grid;
   gap: 10px;
@@ -1188,6 +1228,64 @@ label {
   color: var(--ok);
 }
 
+.validation-summary-message {
+  display: grid;
+  gap: 4px;
+}
+
+.validation-summary-message span {
+  color: #8d241f;
+}
+
+.actionable-message {
+  display: grid;
+  gap: 8px;
+}
+
+.actionable-message button {
+  justify-self: start;
+  min-height: 32px;
+  padding: 5px 10px;
+  background: #ffffff;
+  color: inherit;
+  border-color: currentColor;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.blocking-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 14px 18px 0;
+  padding: 13px 14px;
+  border: 1px solid #ffc9c4;
+  border-radius: 8px;
+  background: #fff6f4;
+  color: var(--danger);
+}
+
+.blocking-notice strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 15px;
+}
+
+.blocking-notice p {
+  margin: 0;
+  color: #8d241f;
+  line-height: 1.55;
+}
+
+.blocking-notice button {
+  flex: 0 0 auto;
+  background: #ffffff;
+  color: var(--danger);
+  border-color: #ffc9c4;
+  font-weight: 900;
+}
+
 .candidate-tab {
   text-align: left;
   background: rgba(255, 255, 255, 0.1);
@@ -1620,6 +1718,16 @@ label {
 
   .unavailable-day-row {
     grid-template-columns: 1fr;
+  }
+
+  .blocking-notice {
+    align-items: stretch;
+    flex-direction: column;
+    margin: 12px 14px 0;
+  }
+
+  .blocking-notice button {
+    width: 100%;
   }
 
   .next-action-bar {
